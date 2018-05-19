@@ -36,7 +36,7 @@ func Build(pkg string, out string) error {
 		for _, pref := range strings.Split(gopath, ":") {
 			if strings.HasPrefix(abs, pref) {
 				pkg = strings.TrimPrefix(abs, filepath.Join(pref, "src"))
-				pkg = strings.TrimLeft(pkg, "/")
+				pkg = strings.Trim(pkg, "/")
 				break
 			}
 		}
@@ -50,7 +50,15 @@ func Build(pkg string, out string) error {
 	if err := unpackBindata("nodego", dir); err != nil {
 		return fmt.Errorf("cannot unpack template: %v", err)
 	}
-	if err := writeImplImport(dir, pkg); err != nil {
+	base := filepath.Base(pkg)
+	if i := strings.LastIndex(base, "."); i < 0 {
+		err = writeImplImport(dir, pkg)
+	} else {
+		fnc := base[i+1:]
+		pkg = strings.TrimSuffix(pkg, "."+fnc)
+		err = writeImplHttpHandleFunc(dir, pkg, fnc)
+	}
+	if err != nil {
 		return fmt.Errorf("cannot write import: %v", err)
 	}
 	bin := filepath.Join(dir, "main")
@@ -80,16 +88,45 @@ func unpackBindata(from, to string) error {
 	return nil
 }
 
-func writeImplImport(dir, pkg string) error {
+func writeImpl(dir string, fnc func(w io.Writer) error) error {
 	f, err := os.Create(filepath.Join(dir, "impl.go"))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if _, err = fmt.Fprintf(f, "package main\n\nimport _ %q\n", pkg); err != nil {
+	if err = fnc(f); err != nil {
 		return err
 	}
 	return f.Close()
+}
+
+func writeImplImport(dir, pkg string) error {
+	return writeImpl(dir, func(w io.Writer) error {
+		_, err := fmt.Fprintf(w, `package main
+
+import _ %q
+`, pkg)
+		return err
+	})
+}
+
+func writeImplHttpHandleFunc(dir, pkg, fnc string) error {
+	return writeImpl(dir, func(w io.Writer) error {
+		_, err := fmt.Fprintf(w, `package main
+
+import (
+	"net/http"
+
+	p %q
+)
+
+func init(){
+	http.HandleFunc("/", p.%s)
+}
+
+`, pkg, fnc)
+		return err
+	})
 }
 
 func goBuild(out string, dir string) error {
