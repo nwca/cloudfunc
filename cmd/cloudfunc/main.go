@@ -27,7 +27,11 @@ func init() {
 			if len(args) > 1 {
 				out = args[1]
 			}
-			return gcp.Build(pkg, out)
+			t, err := gcp.ParseTarget(pkg)
+			if err != nil {
+				return err
+			}
+			return gcp.Build(gcp.HTTPTrigger{Target: t}, out)
 		},
 	}
 	Root.AddCommand(buildCmd)
@@ -35,20 +39,73 @@ func init() {
 	deployCmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "deploy cloud function",
+	}
+	deployCmd.PersistentFlags().StringP("bucket", "b", "", "staging bucket to upload sources")
+	Root.AddCommand(deployCmd)
+
+	deployZip := &cobra.Command{
+		Use:   "zip",
+		Short: "deploy zip file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 2 {
-				return fmt.Errorf("expected 2 arguments: function name and the package")
+				return fmt.Errorf("expected 2 arguments: function name and archive name")
 			}
 			b, _ := cmd.Flags().GetString("bucket")
 			if b == "" {
 				return fmt.Errorf("staging bucket not specified")
 			}
 			name, pkg := args[0], args[1]
-			return gcp.Deploy(name, pkg, b)
+			return gcp.DeployZIP(name, pkg, b)
 		},
 	}
-	deployCmd.Flags().StringP("bucket", "b", "", "staging bucket to upload sources")
-	Root.AddCommand(deployCmd)
+	deployCmd.AddCommand(deployZip)
+
+	deployHttp := &cobra.Command{
+		Use:   "http",
+		Short: "deploy http trigger",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return fmt.Errorf("expected 2 arguments: function name and package name")
+			}
+			b, _ := cmd.Flags().GetString("bucket")
+			if b == "" {
+				return fmt.Errorf("staging bucket not specified")
+			}
+			name, pkg := args[0], args[1]
+			t, err := gcp.ParseTarget(pkg)
+			if err != nil {
+				return err
+			}
+			return gcp.Deploy(name, gcp.HTTPTrigger{Target: t}, b)
+		},
+	}
+	deployCmd.AddCommand(deployHttp)
+
+	deployPubSub := &cobra.Command{
+		Use:   "pubsub",
+		Short: "deploy pubsub trigger",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return fmt.Errorf("expected 2 arguments: function name and package name")
+			}
+			b, _ := cmd.Flags().GetString("bucket")
+			if b == "" {
+				return fmt.Errorf("staging bucket not specified")
+			}
+			topic, _ := cmd.Flags().GetString("topic")
+			if b == "" {
+				return fmt.Errorf("topic not specified")
+			}
+			name, pkg := args[0], args[1]
+			t, err := gcp.ParseTarget(pkg)
+			if err != nil {
+				return err
+			}
+			return gcp.Deploy(name, gcp.TopicTrigger{Target: t, Topic: topic}, b)
+		},
+	}
+	deployPubSub.Flags().StringP("topic", "t", "", "topic id")
+	deployCmd.AddCommand(deployPubSub)
 }
 
 func main() {

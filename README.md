@@ -15,14 +15,20 @@ go install github.com/nwca/cloudfunc/cmd/cloudfunc
 
 ## Build and deploy a cloud function
 
-Register a handler using `init()`:
+Package that registers HTTP handlers in `init()`:
 
 ```
-cloudfunc deploy -b my-staging-bucket hello ./example/hello
+cloudfunc deploy http -b my-staging-bucket hello ./example/hello
 ```
 
-Or to register specific handler function:
+Specific handler function in the package:
 
 ```
-cloudfunc deploy -b my-staging-bucket hello ./example/hellofnc.HelloFunc
+cloudfunc deploy http -b my-staging-bucket hello ./example/hellofnc.HelloFunc
+```
+
+PubSub handler function:
+
+```
+cloudfunc deploy pubsub -b my-staging-bucket -t my-topic hello ./example/pubsub.HandleTopic
 ```

@@ -10,7 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
 	"strings"
+
+	"log"
 
 	"github.com/nwca/cloudfunc/gcp/bindata"
 )
@@ -23,46 +26,23 @@ func goPath() (string, error) {
 	return string(bytes.TrimSpace(data)), nil
 }
 
-func Build(pkg string, out string) error {
-	if strings.HasPrefix(pkg, ".") || strings.HasPrefix(pkg, "/") {
-		abs, err := filepath.Abs(pkg)
-		if err != nil {
-			return err
-		}
-		gopath, err := goPath()
-		if err != nil {
-			return err
-		}
-		for _, pref := range strings.Split(gopath, ":") {
-			if strings.HasPrefix(abs, pref) {
-				pkg = strings.TrimPrefix(abs, filepath.Join(pref, "src"))
-				pkg = strings.Trim(pkg, "/")
-				break
-			}
-		}
-	}
+func Build(tr Trigger, out string) error {
 	dir, err := ioutil.TempDir("", "cloudfunc-")
 	if err != nil {
 		return err
 	}
+	log.Println("buid dir:", dir)
 	defer os.RemoveAll(dir)
 
 	if err := unpackBindata("nodego", dir); err != nil {
 		return fmt.Errorf("cannot unpack template: %v", err)
 	}
-	base := filepath.Base(pkg)
-	if i := strings.LastIndex(base, "."); i < 0 {
-		err = writeImplImport(dir, pkg)
-	} else {
-		fnc := base[i+1:]
-		pkg = strings.TrimSuffix(pkg, "."+fnc)
-		err = writeImplHttpHandleFunc(dir, pkg, fnc)
-	}
+	err = writeImpl(dir, tr.writeSource)
 	if err != nil {
 		return fmt.Errorf("cannot write import: %v", err)
 	}
 	bin := filepath.Join(dir, "main")
-	if err := goBuild(bin, dir); err != nil {
+	if err := goBuild(bin, dir, tr.buildTags()); err != nil {
 		return fmt.Errorf("cannot build binary: %v", err)
 	}
 	if err := repackTar2ZipWith("function.tar", out, bin); err != nil {
@@ -100,41 +80,13 @@ func writeImpl(dir string, fnc func(w io.Writer) error) error {
 	return f.Close()
 }
 
-func writeImplImport(dir, pkg string) error {
-	return writeImpl(dir, func(w io.Writer) error {
-		_, err := fmt.Fprintf(w, `package main
-
-import _ %q
-`, pkg)
-		return err
-	})
-}
-
-func writeImplHttpHandleFunc(dir, pkg, fnc string) error {
-	return writeImpl(dir, func(w io.Writer) error {
-		_, err := fmt.Fprintf(w, `package main
-
-import (
-	"net/http"
-
-	p %q
-)
-
-func init(){
-	http.HandleFunc("/", p.%s)
-}
-
-`, pkg, fnc)
-		return err
-	})
-}
-
-func goBuild(out string, dir string) error {
+func goBuild(out string, dir string, tags []string) error {
 	gopath, err := goPath()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("go", "build", "-tags", "node", "-o", out)
+	tags = append(tags, "node")
+	cmd := exec.Command("go", "build", "-tags", strings.Join(tags, " "), "-o", out)
 	cmd.Env = append(cmd.Env,
 		`GOARCH=amd64`,
 		`GOOS=linux`,
