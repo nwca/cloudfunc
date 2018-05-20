@@ -18,17 +18,29 @@ go install github.com/nwca/cloudfunc/cmd/cloudfunc
 Package that registers HTTP handlers in `init()`:
 
 ```
-cloudfunc deploy http -b my-staging-bucket hello ./example/hello
+cloudfunc deploy http -s my-staging-bucket hello ./example/hello
 ```
 
 Specific handler function in the package:
 
 ```
-cloudfunc deploy http -b my-staging-bucket hello ./example/hellofnc.HelloFunc
+cloudfunc deploy http -s my-staging-bucket hello ./example/hellofnc.HelloFunc
 ```
 
-PubSub handler function:
+PubSub trigger function:
 
 ```
-cloudfunc deploy pubsub -b my-staging-bucket -t my-topic hello ./example/pubsub.HandleTopic
+cloudfunc deploy pubsub -s my-staging-bucket -t my-topic hello ./example/pubsub.HandleTopic
+```
+
+Storage trigger function:
+
+```
+cloudfunc deploy storage -s my-staging-bucket -b my-bucket hello ./example/storage.HandleStorage
+```
+
+or with a specific event type:
+
+```
+cloudfunc deploy storage -s my-staging-bucket -b my-bucket -e delete hello ./example/storage.HandleStorage
 ```

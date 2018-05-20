@@ -3,7 +3,6 @@ package hello
 import (
 	"context"
 	"os"
-
 	"time"
 
 	"cloud.google.com/go/pubsub"

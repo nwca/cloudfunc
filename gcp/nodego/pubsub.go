@@ -18,7 +18,7 @@ func HandlePubSub(fnc PubSubFunc) {
 		// /execute/_ah/push-handlers/pubsub/projects/[PROJECT]/topics/[TOPIC]
 		// {
 		// 		"context":{
-		// 			"eventId":"<ID>",
+		// 			"eventId":"[ID]",
 		// 			"timestamp":"yyyy-mm-ddThh:mm:ss.000Z",
 		// 			"eventType":"google.pubsub.topic.publish",
 		// 			"resource":{
@@ -33,9 +33,7 @@ func HandlePubSub(fnc PubSubFunc) {
 		// 		}
 		// }
 		var m struct {
-			Ctx struct {
-				//TS time.Time `json:"timestamp"`
-			} `json:"context"`
+			Ctx  Context `json:"context"`
 			Data struct {
 				Type string            `json:"@type"`
 				Attr map[string]string `json:"attributes"`

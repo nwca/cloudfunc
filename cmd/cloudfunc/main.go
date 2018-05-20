@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"strings"
 
 	"github.com/nwca/cloudfunc/gcp"
 	"github.com/spf13/cobra"
@@ -15,6 +16,7 @@ var Root = &cobra.Command{
 }
 
 func init() {
+	const stagingBucketFlag = "staging"
 	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "builds cloud function from a Go package",
@@ -40,7 +42,7 @@ func init() {
 		Use:   "deploy",
 		Short: "deploy cloud function",
 	}
-	deployCmd.PersistentFlags().StringP("bucket", "b", "", "staging bucket to upload sources")
+	deployCmd.PersistentFlags().StringP(stagingBucketFlag, "s", "", "staging bucket to upload sources")
 	Root.AddCommand(deployCmd)
 
 	deployZip := &cobra.Command{
@@ -50,7 +52,7 @@ func init() {
 			if len(args) != 2 {
 				return fmt.Errorf("expected 2 arguments: function name and archive name")
 			}
-			b, _ := cmd.Flags().GetString("bucket")
+			b, _ := cmd.Flags().GetString(stagingBucketFlag)
 			if b == "" {
 				return fmt.Errorf("staging bucket not specified")
 			}
@@ -67,7 +69,7 @@ func init() {
 			if len(args) != 2 {
 				return fmt.Errorf("expected 2 arguments: function name and package name")
 			}
-			b, _ := cmd.Flags().GetString("bucket")
+			b, _ := cmd.Flags().GetString(stagingBucketFlag)
 			if b == "" {
 				return fmt.Errorf("staging bucket not specified")
 			}
@@ -88,7 +90,7 @@ func init() {
 			if len(args) != 2 {
 				return fmt.Errorf("expected 2 arguments: function name and package name")
 			}
-			b, _ := cmd.Flags().GetString("bucket")
+			b, _ := cmd.Flags().GetString(stagingBucketFlag)
 			if b == "" {
 				return fmt.Errorf("staging bucket not specified")
 			}
@@ -106,6 +108,37 @@ func init() {
 	}
 	deployPubSub.Flags().StringP("topic", "t", "", "topic id")
 	deployCmd.AddCommand(deployPubSub)
+
+	deployStorage := &cobra.Command{
+		Use:   "storage",
+		Short: "deploy storage trigger",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 2 {
+				return fmt.Errorf("expected 2 arguments: function name and package name")
+			}
+			b, _ := cmd.Flags().GetString(stagingBucketFlag)
+			if b == "" {
+				return fmt.Errorf("staging bucket not specified")
+			}
+			bucket, _ := cmd.Flags().GetString("bucket")
+			if b == "" {
+				return fmt.Errorf("topic not specified")
+			}
+			event, _ := cmd.Flags().GetString("event")
+			if event != "" && !strings.HasPrefix(event, gcp.StorageEventPref) {
+				event = gcp.StorageEventPref + event
+			}
+			name, pkg := args[0], args[1]
+			t, err := gcp.ParseTarget(pkg)
+			if err != nil {
+				return err
+			}
+			return gcp.Deploy(name, gcp.StorageTrigger{Target: t, Bucket: bucket, Event: gcp.StorageEvent(event)}, b)
+		},
+	}
+	deployStorage.Flags().StringP("bucket", "b", "", "bucket name")
+	deployStorage.Flags().StringP("event", "e", "", "event type")
+	deployCmd.AddCommand(deployStorage)
 }
 
 func main() {

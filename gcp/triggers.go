@@ -114,3 +114,40 @@ func toPackage(pkg string) (string, error) {
 	}
 	return pkg, nil
 }
+
+type StorageEvent string
+
+const (
+	StorageEventPref      = "google.storage.object."
+	StorageFinalize       = StorageEvent(StorageEventPref + "finalize")
+	StorageDelete         = StorageEvent(StorageEventPref + "delete")
+	StorageArchive        = StorageEvent(StorageEventPref + "archive")
+	StorageMetadataUpdate = StorageEvent(StorageEventPref + "metadataUpdate")
+)
+
+type StorageTrigger struct {
+	Target
+	Bucket string
+	Event  StorageEvent
+}
+
+func (t StorageTrigger) buildTags() []string { return []string{"storage"} }
+
+func (t StorageTrigger) writeSource(w io.Writer) error {
+	_, err := fmt.Fprintf(w, `package main
+
+import p %q
+
+func init(){
+	HandleStorage(p.%s)
+}
+`, t.Package, t.Func)
+	return err
+}
+
+func (t StorageTrigger) gcloudArgs() []string {
+	if t.Event != "" {
+		return []string{"--trigger-resource", t.Bucket, "--trigger-event", string(t.Event)}
+	}
+	return []string{"--trigger-bucket", t.Bucket}
+}
