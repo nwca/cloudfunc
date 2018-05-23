@@ -26,12 +26,20 @@ func goPath() (string, error) {
 	return string(bytes.TrimSpace(data)), nil
 }
 
-func Build(tr Trigger, out string) error {
+func BuildTmp(tr Trigger, env map[string]string) (io.ReadCloser, error) {
+	buf := bytes.NewBuffer(nil)
+	if err := Build(tr, env, buf); err != nil {
+		return nil, err
+	}
+	return ioutil.NopCloser(buf), nil
+}
+
+func Build(tr Trigger, env map[string]string, out io.Writer) error {
 	dir, err := ioutil.TempDir("", "cloudfunc-")
 	if err != nil {
 		return err
 	}
-	log.Println("buid dir:", dir)
+	log.Println("build dir:", dir)
 	defer os.RemoveAll(dir)
 
 	if err := unpackBindata("nodego", dir); err != nil {
@@ -40,6 +48,10 @@ func Build(tr Trigger, out string) error {
 	err = writeImpl(dir, tr.writeSource)
 	if err != nil {
 		return fmt.Errorf("cannot write import: %v", err)
+	}
+	err = writeEnv(dir, env)
+	if err != nil {
+		return fmt.Errorf("cannot write env: %v", err)
 	}
 	bin := filepath.Join(dir, "main")
 	if err := goBuild(bin, dir, tr.buildTags()); err != nil {
@@ -68,8 +80,8 @@ func unpackBindata(from, to string) error {
 	return nil
 }
 
-func writeImpl(dir string, fnc func(w io.Writer) error) error {
-	f, err := os.Create(filepath.Join(dir, "impl.go"))
+func writeSource(dir string, file string, fnc func(w io.Writer) error) error {
+	f, err := os.Create(filepath.Join(dir, file))
 	if err != nil {
 		return err
 	}
@@ -78,6 +90,33 @@ func writeImpl(dir string, fnc func(w io.Writer) error) error {
 		return err
 	}
 	return f.Close()
+}
+
+func writeImpl(dir string, fnc func(w io.Writer) error) error {
+	return writeSource(dir, "impl.go", fnc)
+}
+
+func writeEnv(dir string, env map[string]string) error {
+	if len(env) == 0 {
+		return nil
+	}
+	log.Printf("writing %d environment variables", len(env))
+	return writeSource(dir, "app_env.go", func(w io.Writer) error {
+		_, err := w.Write([]byte(`package main
+
+import "os"
+
+func init() {
+`))
+		if err != nil {
+			return err
+		}
+		for k, v := range env {
+			fmt.Fprintf(w, "\tos.Setenv(%q, %q)\n", k, v)
+		}
+		_, err = w.Write([]byte("}\n"))
+		return err
+	})
 }
 
 func goBuild(out string, dir string, tags []string) error {
@@ -98,19 +137,14 @@ func goBuild(out string, dir string, tags []string) error {
 	return cmd.Run()
 }
 
-func repackTar2ZipWith(from, to string, add ...string) error {
+func repackTar2ZipWith(from string, to io.Writer, add ...string) error {
 	arch, err := bindata.Asset(from)
 	if err != nil {
 		return err
 	}
 	tr := tar.NewReader(bytes.NewReader(arch))
-	zf, err := os.Create(to)
-	if err != nil {
-		return err
-	}
-	defer zf.Close()
 
-	zw := zip.NewWriter(zf)
+	zw := zip.NewWriter(to)
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -165,5 +199,5 @@ func repackTar2ZipWith(from, to string, add ...string) error {
 	if err = zw.Close(); err != nil {
 		return fmt.Errorf("flush failed: %v", err)
 	}
-	return zf.Close()
+	return nil
 }

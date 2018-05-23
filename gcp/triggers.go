@@ -5,6 +5,8 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+
+	funcs "google.golang.org/genproto/googleapis/cloud/functions/v1beta2"
 )
 
 func ParseTarget(path string) (Target, error) {
@@ -29,6 +31,7 @@ type Trigger interface {
 	writeSource(w io.Writer) error
 	buildTags() []string
 	gcloudArgs() []string
+	setOn(proj string, f *funcs.CloudFunction)
 }
 
 type Target struct {
@@ -66,6 +69,11 @@ func init(){
 	return err
 }
 
+func (t HTTPTrigger) setOn(proj string, f *funcs.CloudFunction) {
+	f.Trigger = &funcs.CloudFunction_HttpsTrigger{
+		HttpsTrigger: &funcs.HTTPSTrigger{},
+	}
+}
 func (t HTTPTrigger) gcloudArgs() []string {
 	return []string{"--trigger-http"}
 }
@@ -87,6 +95,15 @@ func init(){
 }
 `, t.Package, t.Func)
 	return err
+}
+
+func (t TopicTrigger) setOn(proj string, f *funcs.CloudFunction) {
+	f.Trigger = &funcs.CloudFunction_EventTrigger{
+		EventTrigger: &funcs.EventTrigger{
+			EventType: "providers/cloud.pubsub/eventTypes/topic.publish",
+			Resource:  "projects/" + proj + "/topics/" + t.Topic,
+		},
+	}
 }
 
 func (t TopicTrigger) gcloudArgs() []string {
@@ -128,7 +145,7 @@ const (
 type StorageTrigger struct {
 	Target
 	Bucket string
-	Event  StorageEvent
+	//Event  StorageEvent
 }
 
 func (t StorageTrigger) buildTags() []string { return []string{"storage"} }
@@ -145,9 +162,18 @@ func init(){
 	return err
 }
 
-func (t StorageTrigger) gcloudArgs() []string {
-	if t.Event != "" {
-		return []string{"--trigger-resource", t.Bucket, "--trigger-event", string(t.Event)}
+func (t StorageTrigger) setOn(proj string, f *funcs.CloudFunction) {
+	f.Trigger = &funcs.CloudFunction_EventTrigger{
+		EventTrigger: &funcs.EventTrigger{
+			EventType: "providers/cloud.storage/eventTypes/object.change",
+			Resource:  "projects/" + proj + "/buckets/" + t.Bucket,
+		},
 	}
+}
+
+func (t StorageTrigger) gcloudArgs() []string {
+	//if t.Event != "" {
+	//	return []string{"--trigger-resource", t.Bucket, "--trigger-event", string(t.Event)}
+	//}
 	return []string{"--trigger-bucket", t.Bucket}
 }
