@@ -49,15 +49,16 @@ func Build(tr Trigger, env map[string]string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("cannot write import: %v", err)
 	}
-	err = writeEnv(dir, env)
-	if err != nil {
-		return fmt.Errorf("cannot write env: %v", err)
-	}
 	bin := filepath.Join(dir, "main")
 	if err := goBuild(bin, dir, tr.buildTags()); err != nil {
 		return fmt.Errorf("cannot build binary: %v", err)
 	}
-	if err := repackTar2ZipWith("function.tar", out, bin); err != nil {
+	envjs := filepath.Join(dir, "env.js")
+	err = writeEnvJS(envjs, env)
+	if err != nil {
+		return fmt.Errorf("cannot write env: %v", err)
+	}
+	if err := repackTar2ZipWith("function.tar", out, bin, envjs); err != nil {
 		return err
 	}
 	return nil
@@ -80,8 +81,8 @@ func unpackBindata(from, to string) error {
 	return nil
 }
 
-func writeSource(dir string, file string, fnc func(w io.Writer) error) error {
-	f, err := os.Create(filepath.Join(dir, file))
+func writeSource(file string, fnc func(w io.Writer) error) error {
+	f, err := os.Create(file)
 	if err != nil {
 		return err
 	}
@@ -93,29 +94,17 @@ func writeSource(dir string, file string, fnc func(w io.Writer) error) error {
 }
 
 func writeImpl(dir string, fnc func(w io.Writer) error) error {
-	return writeSource(dir, "impl.go", fnc)
+	return writeSource(filepath.Join(dir, "impl.go"), fnc)
 }
 
-func writeEnv(dir string, env map[string]string) error {
-	if len(env) == 0 {
-		return nil
-	}
+func writeEnvJS(dst string, env map[string]string) error {
 	log.Printf("writing %d environment variables", len(env))
-	return writeSource(dir, "app_env.go", func(w io.Writer) error {
-		_, err := w.Write([]byte(`package main
-
-import "os"
-
-func init() {
-`))
-		if err != nil {
-			return err
-		}
+	return writeSource(dst, func(w io.Writer) error {
+		var last error
 		for k, v := range env {
-			fmt.Fprintf(w, "\tos.Setenv(%q, %q)\n", k, v)
+			_, last = fmt.Fprintf(w, "process.env[%q] = %q;\n", k, v)
 		}
-		_, err = w.Write([]byte("}\n"))
-		return err
+		return last
 	})
 }
 
