@@ -53,6 +53,9 @@ func Build(tr Trigger, env map[string]string, out io.Writer) error {
 	if err := goBuild(bin, dir, tr.buildTags()); err != nil {
 		return fmt.Errorf("cannot build binary: %v", err)
 	}
+	if err := testBin(bin); err != nil {
+		return err
+	}
 	envjs := filepath.Join(dir, "env.js")
 	err = writeEnvJS(envjs, env)
 	if err != nil {
@@ -124,6 +127,18 @@ func goBuild(out string, dir string, tags []string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Dir = dir
 	return cmd.Run()
+}
+
+func testBin(bin string) error {
+	cmd := exec.Command(bin, "-h")
+	out, err := cmd.CombinedOutput()
+	if _, ok := err.(*exec.ExitError); !ok && err != nil {
+		return err
+	}
+	if bytes.Contains(out, []byte("panic")) {
+		return fmt.Errorf("binary panics on start:\n%s", string(out))
+	}
+	return nil
 }
 
 func repackTar2ZipWith(from string, to io.Writer, add ...string) error {

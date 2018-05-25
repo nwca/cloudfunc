@@ -18,6 +18,10 @@ import (
 	"flag"
 )
 
+func init() {
+	OverrideLogger()
+}
+
 func main() {
 	flag.Parse()
 	TakeOver()
